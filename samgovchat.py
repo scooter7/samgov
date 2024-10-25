@@ -9,7 +9,7 @@ samgov_api_key = st.secrets["samgov"]["api_key"]
 
 # Function to use OpenAI for further questions on an opportunity
 def chat_about_opportunity(opportunity, question):
-    response = openai.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an assistant that provides detailed insights about government contract opportunities."},
@@ -82,9 +82,15 @@ default_posted_from = (today - timedelta(days=30)).strftime("%m/%d/%Y")
 posted_from = st.text_input("Posted Date From (MM/DD/YYYY):", default_posted_from)
 posted_to = st.text_input("Posted Date To (MM/DD/YYYY):", today.strftime("%m/%d/%Y"))
 
+# Initialize session state for opportunities and chat responses
 if "opportunities" not in st.session_state:
     st.session_state["opportunities"] = []
+if "questions" not in st.session_state:
+    st.session_state["questions"] = {}
+if "answers" not in st.session_state:
+    st.session_state["answers"] = {}
 
+# Search SAM.gov and store results in session state
 if st.button("Search"):
     st.write("Searching SAM.gov...")
     results = search_sam_gov(natural_query, ptype_code, posted_from, posted_to, include_keywords, include_ptype)
@@ -105,20 +111,26 @@ for i, opportunity in enumerate(st.session_state["opportunities"]):
         st.write("Solicitation Number:", opportunity.get("solicitationNumber", "N/A"))
         st.write("Link:", opportunity.get("uiLink", "N/A"))
         
-        # Input for follow-up questions on the opportunity
+        # Unique keys for each question and answer
         question_key = f"question_{i}"
-        if question_key not in st.session_state:
-            st.session_state[question_key] = ""
+        answer_key = f"answer_{i}"
+
+        # Retrieve previous question from session state
+        if question_key not in st.session_state["questions"]:
+            st.session_state["questions"][question_key] = ""
         
         question = st.text_input(f"Ask about this opportunity (ID: {opportunity.get('noticeId', 'N/A')})", key=question_key)
         
         if st.button("Ask", key=f"ask_button_{i}"):
             if question:
+                # Store the question in session state
+                st.session_state["questions"][question_key] = question
+                # Get answer from OpenAI and store it in session state
                 answer = chat_about_opportunity(opportunity, question)
-                st.session_state[f"answer_{i}"] = answer
+                st.session_state["answers"][answer_key] = answer
             else:
                 st.write("Please enter a question.")
         
-        # Display answer if available
-        if f"answer_{i}" in st.session_state:
-            st.write("Answer:", st.session_state[f"answer_{i}"])
+        # Display stored answer if available
+        if answer_key in st.session_state["answers"]:
+            st.write("Answer:", st.session_state["answers"][answer_key])
