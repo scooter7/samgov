@@ -1,9 +1,22 @@
 import streamlit as st
+import openai
 import requests
 from datetime import datetime, timedelta
 
-# Set API key from Streamlit secrets
+# Set API keys from Streamlit secrets
+openai.api_key = st.secrets["openai"]["api_key"]
 samgov_api_key = st.secrets["samgov"]["api_key"]
+
+# OpenAI function to convert natural language into a structured SAM.gov query
+def get_structured_query(natural_query):
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are an assistant that helps format queries for government contract opportunities."},
+            {"role": "user", "content": f"Translate this natural language query into a structured query for SAM.gov: {natural_query}"}
+        ]
+    )
+    return response.choices[0].message.content.strip()
 
 # SAM.gov API search function with required parameters
 def search_sam_gov(query, ptype, posted_from, posted_to):
@@ -28,12 +41,31 @@ def search_sam_gov(query, ptype, posted_from, posted_to):
         st.write(f"Error: {response.status_code} - {response.text}")
         return None
 
-# Streamlit UI
-st.title("SAM.gov Opportunity Search")
-st.write("Enter your search criteria to find relevant government opportunities on SAM.gov.")
+# Function to ask further questions about an opportunity
+def chat_about_opportunity(opportunity, question):
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are an assistant that provides insights about government contract opportunities."},
+            {"role": "assistant", "content": f"Here is a government contract opportunity: {opportunity}"},
+            {"role": "user", "content": question}
+        ]
+    )
+    return response.choices[0].message.content.strip()
 
-# Input fields for search parameters
-natural_query = st.text_input("Enter keywords:", "environmental services")
+# Streamlit UI
+st.title("SAM.gov Opportunity Search with Chat")
+st.write("Ask questions in natural language to find relevant government opportunities on SAM.gov and chat further about each opportunity.")
+
+# Input field for natural language query
+natural_query = st.text_input("Enter your search query:", "Looking for environmental services opportunities")
+
+# Generate structured query with OpenAI
+if st.button("Generate Structured Query"):
+    structured_query = get_structured_query(natural_query)
+    st.write("Structured query:", structured_query)
+else:
+    structured_query = natural_query
 
 # Required parameter: Procurement Type
 procurement_types = {
@@ -56,12 +88,13 @@ default_posted_from = (today - timedelta(days=30)).strftime("%m/%d/%Y")
 posted_from = st.text_input("Posted Date From (MM/DD/YYYY):", default_posted_from)
 posted_to = st.text_input("Posted Date To (MM/DD/YYYY):", today.strftime("%m/%d/%Y"))
 
+# Search SAM.gov and display opportunities
 if st.button("Search"):
-    if natural_query:
+    if structured_query:
         st.write("Searching SAM.gov...")
-        results = search_sam_gov(natural_query, ptype_code, posted_from, posted_to)
+        results = search_sam_gov(structured_query, ptype_code, posted_from, posted_to)
 
-        # Display results
+        # Display results and chat about each opportunity
         if results and "opportunitiesData" in results:
             opportunities = results["opportunitiesData"]
             if opportunities:
@@ -73,9 +106,18 @@ if st.button("Search"):
                         st.write("Posted Date:", opportunity.get("postedDate", "N/A"))
                         st.write("Solicitation Number:", opportunity.get("solicitationNumber", "N/A"))
                         st.write("Link:", opportunity.get("uiLink", "N/A"))
+                        
+                        # Input for follow-up questions on the opportunity
+                        question = st.text_input(f"Ask about this opportunity (ID: {opportunity.get('noticeId', 'N/A')})", key=f"question_{i}")
+                        if st.button("Ask", key=f"ask_button_{i}"):
+                            if question:
+                                answer = chat_about_opportunity(opportunity, question)
+                                st.write("Answer:", answer)
+                            else:
+                                st.write("Please enter a question.")
             else:
                 st.write("No opportunities found.")
         else:
             st.write("No opportunities found or an error occurred.")
     else:
-        st.write("Please enter keywords to search.")
+        st.write("Please enter a search query.")
