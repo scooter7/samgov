@@ -8,14 +8,14 @@ samgov_api_key = st.secrets["samgov"]["api_key"]
 
 # GPT-4o-mini API call function to convert natural language to SAM.gov query
 def get_structured_query(natural_query):
-    response = openai.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an assistant that helps format queries for government contract opportunities."},
             {"role": "user", "content": f"Translate this natural language query into a structured query for SAM.gov: {natural_query}"}
         ]
     )
-    return response.choices[0].message["content"].strip()
+    return response.choices[0].message.content.strip()
 
 # SAM.gov API search function
 def search_sam_gov(query):
