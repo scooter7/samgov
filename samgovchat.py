@@ -23,6 +23,11 @@ def search_sam_gov(query, ptype, posted_from, posted_to):
         "limit": 10,
         "offset": 0,
     }
+    
+    # Debug output to verify API request parameters
+    st.write("API Request URL:", url)
+    st.write("Request Parameters:", params)
+
     response = requests.get(url, headers=headers, params=params)
     if response.status_code == 200:
         return response.json()
@@ -32,7 +37,7 @@ def search_sam_gov(query, ptype, posted_from, posted_to):
 
 # Function to ask further questions about an opportunity
 def chat_about_opportunity(opportunity, question):
-    response = openai.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an assistant that provides insights about government contract opportunities."},
