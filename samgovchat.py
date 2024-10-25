@@ -7,17 +7,6 @@ from datetime import datetime, timedelta
 openai.api_key = st.secrets["openai"]["api_key"]
 samgov_api_key = st.secrets["samgov"]["api_key"]
 
-# OpenAI function to convert natural language into a structured SAM.gov query
-def get_structured_query(natural_query):
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an assistant that helps format queries for government contract opportunities."},
-            {"role": "user", "content": f"Translate this natural language query into a structured query for SAM.gov: {natural_query}"}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
 # SAM.gov API search function with required parameters
 def search_sam_gov(query, ptype, posted_from, posted_to):
     url = "https://api.sam.gov/prod/opportunities/v2/search"
@@ -60,13 +49,6 @@ st.write("Ask questions in natural language to find relevant government opportun
 # Input field for natural language query
 natural_query = st.text_input("Enter your search query:", "Looking for environmental services opportunities")
 
-# Generate structured query with OpenAI
-if st.button("Generate Structured Query"):
-    structured_query = get_structured_query(natural_query)
-    st.write("Structured query:", structured_query)
-else:
-    structured_query = natural_query
-
 # Required parameter: Procurement Type
 procurement_types = {
     "Justification (J&A)": "u",
@@ -88,36 +70,43 @@ default_posted_from = (today - timedelta(days=30)).strftime("%m/%d/%Y")
 posted_from = st.text_input("Posted Date From (MM/DD/YYYY):", default_posted_from)
 posted_to = st.text_input("Posted Date To (MM/DD/YYYY):", today.strftime("%m/%d/%Y"))
 
-# Search SAM.gov and display opportunities
-if st.button("Search"):
-    if structured_query:
-        st.write("Searching SAM.gov...")
-        results = search_sam_gov(structured_query, ptype_code, posted_from, posted_to)
+# Store results in session state to prevent reset
+if "opportunities" not in st.session_state:
+    st.session_state["opportunities"] = []
 
-        # Display results and chat about each opportunity
-        if results and "opportunitiesData" in results:
-            opportunities = results["opportunitiesData"]
-            if opportunities:
-                for i, opportunity in enumerate(opportunities):
-                    with st.expander(opportunity.get("title", "No Title")):
-                        st.write("ID:", opportunity.get("noticeId", "N/A"))
-                        st.write("Type:", opportunity.get("type", "N/A"))
-                        st.write("Department:", opportunity.get("department", "N/A"))
-                        st.write("Posted Date:", opportunity.get("postedDate", "N/A"))
-                        st.write("Solicitation Number:", opportunity.get("solicitationNumber", "N/A"))
-                        st.write("Link:", opportunity.get("uiLink", "N/A"))
-                        
-                        # Input for follow-up questions on the opportunity
-                        question = st.text_input(f"Ask about this opportunity (ID: {opportunity.get('noticeId', 'N/A')})", key=f"question_{i}")
-                        if st.button("Ask", key=f"ask_button_{i}"):
-                            if question:
-                                answer = chat_about_opportunity(opportunity, question)
-                                st.write("Answer:", answer)
-                            else:
-                                st.write("Please enter a question.")
-            else:
-                st.write("No opportunities found.")
-        else:
-            st.write("No opportunities found or an error occurred.")
+if st.button("Search"):
+    st.write("Searching SAM.gov...")
+    results = search_sam_gov(natural_query, ptype_code, posted_from, posted_to)
+    if results and "opportunitiesData" in results:
+        st.session_state["opportunities"] = results["opportunitiesData"]
     else:
-        st.write("Please enter a search query.")
+        st.session_state["opportunities"] = []  # Clear if no results found
+        st.write("No opportunities found or an error occurred.")
+
+# Display results with chat option for each opportunity
+for i, opportunity in enumerate(st.session_state["opportunities"]):
+    with st.expander(opportunity.get("title", "No Title")):
+        st.write("ID:", opportunity.get("noticeId", "N/A"))
+        st.write("Type:", opportunity.get("type", "N/A"))
+        st.write("Department:", opportunity.get("department", "N/A"))
+        st.write("Posted Date:", opportunity.get("postedDate", "N/A"))
+        st.write("Solicitation Number:", opportunity.get("solicitationNumber", "N/A"))
+        st.write("Link:", opportunity.get("uiLink", "N/A"))
+        
+        # Input for follow-up questions on the opportunity, stored in session state
+        question_key = f"question_{i}"
+        if question_key not in st.session_state:
+            st.session_state[question_key] = ""
+        
+        question = st.text_input(f"Ask about this opportunity (ID: {opportunity.get('noticeId', 'N/A')})", key=question_key)
+        
+        if st.button("Ask", key=f"ask_button_{i}"):
+            if question:
+                answer = chat_about_opportunity(opportunity, question)
+                st.session_state[f"answer_{i}"] = answer  # Store answer to avoid reset
+            else:
+                st.write("Please enter a question.")
+        
+        # Display answer if available
+        if f"answer_{i}" in st.session_state:
+            st.write("Answer:", st.session_state[f"answer_{i}"])
