@@ -9,7 +9,7 @@ samgov_api_key = st.secrets["samgov"]["api_key"]
 
 # Function to use OpenAI for further questions on an opportunity
 def chat_about_opportunity(opportunity, question):
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an assistant that provides detailed insights about government contract opportunities."},
